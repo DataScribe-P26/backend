@@ -19,7 +19,7 @@ app.add_middleware(
 )
 
 
-client = AsyncIOMotorClient("mongodb://localhost:27017")
+client = AsyncIOMotorClient("mongodb+srv://Mohit:Tz4O610okBOvSpIu@cluster0.a2yzwap.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
 db = client['annotated_images']
 collection = db['images']
 
