@@ -1,0 +1,15 @@
+[
+    {
+        "filename": "image1.jpg",
+        "annotations": [
+            {"class_name": "object1", "x": 10, "y": 20, "height": 100, "width": 150},
+            {"class_name": "object2", "x": 30, "y": 40, "height": 50, "width": 60}
+        ]
+    },
+    {
+        "filename": "image2.jpg",
+        "annotations": [
+            {"class_name": "object3", "x": 15, "y": 25, "height": 80, "width": 120}
+        ]
+    }
+]
