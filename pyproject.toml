@@ -1,14 +1,15 @@
 [tool.poetry]
-name = "yes"
+name = "backend"
 version = "0.1.0"
 description = ""
-authors = ["Your Name <you@example.com>"]
-readme = "README.md"
+authors = [" Mohit Kirtane <mohit.kirtane@gmail.com>"]
 
 [tool.poetry.dependencies]
 python = "^3.11"
 fastapi = "^0.111.1"
-fastapi-motor = "^0.1.0"
+uvicorn = "^0.30.3"
+motor = "^3.5.1"
+pydantic = "^2.8.2"
 
 
 [build-system]
