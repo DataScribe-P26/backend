@@ -12,63 +12,55 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  
+    allow_origins=["http://localhost:5173"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-
 client = AsyncIOMotorClient("mongodb+srv://Mohit:Tz4O610okBOvSpIu@cluster0.a2yzwap.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
 db = client['annotated_images']
 collection = db['images']
 
-
 class Annotation(BaseModel):
     class_name: str
-    x: int
-    y: int
-    height: int
-    width: int
-
+    x: float
+    y: float
+    height: float
+    width: float
 
 class ImageData(BaseModel):
     filename: str
     annotations: List[Annotation]
 
 @app.post("/upload/")
-async def upload_images(
-    files: List[UploadFile] = File(...),
-    annotations: str = Form(...)
+async def upload_image(
+    annotations: str = Form(...),
+    src: str = Form(...)
 ):
     try:
+        annotation_data = json.loads(annotations)
         
-        annotations_list = json.loads(annotations)
+        # Ensure the expected structure is a dictionary containing an 'annotations' key
+        if 'annotations' not in annotation_data or not isinstance(annotation_data['annotations'], list):
+            raise ValueError("Invalid structure for annotations")
         
-        
-        if len(files) != len(annotations_list):
-            raise HTTPException(status_code=400, detail="Number of files and annotations must match")
-
-        for annotation_data in annotations_list:
-            for annotation in annotation_data['annotations']:
-                Annotation(**annotation)  
+        # Validate each annotation in the list
+        for annotation in annotation_data['annotations']:
+            Annotation(**annotation)
+            
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON format for annotations")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-    image_ids = []
-    for file, annotation_data in zip(files, annotations_list):
-        contents = await file.read()
-        image_data = {
-            "filename": file.filename,
-            "content": contents,
-            "annotations": annotation_data['annotations']
-        }
-        result = await collection.insert_one(image_data)
-        image_ids.append(str(result.inserted_id))
-
-    return {"image_ids": image_ids}
+    
+    image_data = {
+        "filename": "image.png",  # You can set this as per your requirements
+        "content": src,
+        "annotations": annotation_data['annotations']
+    }
+    result = await collection.insert_one(image_data)
+    return {"image_id": str(result.inserted_id)}
 
 @app.get("/images/{image_id}")
 async def get_image(image_id: str):
@@ -87,19 +79,6 @@ async def get_image_content(image_id: str):
     if image:
         return StreamingResponse(io.BytesIO(image['content']), media_type="image/jpeg")
     raise HTTPException(status_code=404, detail="Image not found")
-
-@app.get("/")
-async def main():
-    content = """
-    <body>
-    <form action="/upload/" enctype="multipart/form-data" method="post">
-    <input name="files" type="file" multiple><br>
-    <textarea name="annotations" placeholder='Enter annotations as JSON (format: [{"filename": "file1.jpg", "annotations": [...]}, ...]')></textarea><br>
-    <input type="submit">
-    </form>
-    </body>
-    """
-    return HTMLResponse(content=content)
 
 if __name__ == "__main__":
     import uvicorn
