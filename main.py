@@ -1,5 +1,5 @@
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel
@@ -33,29 +33,49 @@ class ImageData(BaseModel):
     filename: str
     annotations: List[Annotation]
 
+class InvalidAnnotationError(HTTPException):
+    def _init_(self, detail: str):
+        super()._init_(status_code=400, detail=detail)
+
+class ImageNotFoundError(HTTPException):
+    def _init_(self):
+        super()._init_(status_code=404, detail="Image not found")
+
+@app.exception_handler(InvalidAnnotationError)
+async def invalid_annotation_exception_handler(request: Request, exc: InvalidAnnotationError):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+    )
+
+@app.exception_handler(ImageNotFoundError)
+async def image_not_found_exception_handler(request: Request, exc: ImageNotFoundError):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+    )
+
 @app.post("/upload/")
 async def upload_image(
     annotations: str = Form(...),
     src: str = Form(...)
 ):
+    """
+    """
     try:
         annotation_data = json.loads(annotations)
         
-        # Ensure the expected structure is a dictionary containing an 'annotations' key
         if 'annotations' not in annotation_data or not isinstance(annotation_data['annotations'], list):
-            raise ValueError("Invalid structure for annotations")
+            raise InvalidAnnotationError("Invalid structure for annotations")
         
-        # Validate each annotation in the list
         for annotation in annotation_data['annotations']:
             Annotation(**annotation)
             
     except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid JSON format for annotations")
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise InvalidAnnotationError("Invalid JSON format for annotations")
     
     image_data = {
-        "filename": "image.png",  # You can set this as per your requirements
+        "filename": "image.png",
         "content": src,
         "annotations": annotation_data['annotations']
     }
@@ -71,15 +91,22 @@ async def get_image(image_id: str):
             "annotations": image.get("annotations", []),
             "image_url": f"/images/content/{image_id}"
         }
-    raise HTTPException(status_code=404, detail="Image not found")
+    raise ImageNotFoundError()
 
 @app.get("/images/content/{image_id}")
 async def get_image_content(image_id: str):
     image = await collection.find_one({"_id": ObjectId(image_id)})
     if image:
         return StreamingResponse(io.BytesIO(image['content']), media_type="image/jpeg")
-    raise HTTPException(status_code=404, detail="Image not found")
+    raise ImageNotFoundError()
 
-if __name__ == "__main__":
+@app.delete("/images/{image_id}")
+async def delete_image(image_id: str):
+    result = await collection.delete_one({"_id": ObjectId(image_id)})
+    if result.deleted_count == 1:
+        return {"detail": "Image deleted successfully"}
+    raise ImageNotFoundError()
+
+if __name__ == "_main_":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0",port=8000)
