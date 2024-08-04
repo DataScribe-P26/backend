@@ -1,5 +1,5 @@
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi import FastAPI, Form, Request, HTTPException
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel
@@ -33,6 +33,28 @@ class ImageData(BaseModel):
     filename: str
     annotations: List[Annotation]
 
+class InvalidAnnotationError(HTTPException):
+    def _init_(self, detail: str):
+        super()._init_(status_code=400, detail=detail)
+
+class ImageNotFoundError(HTTPException):
+    def _init_(self):
+        super()._init_(status_code=404, detail="Image not found")
+
+@app.exception_handler(InvalidAnnotationError)
+async def invalid_annotation_exception_handler(request: Request, exc: InvalidAnnotationError):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+    )
+
+@app.exception_handler(ImageNotFoundError)
+async def image_not_found_exception_handler(request: Request, exc: ImageNotFoundError):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+    )
+
 @app.post("/upload/")
 async def upload_image(
     annotations: str = Form(...),
@@ -43,19 +65,17 @@ async def upload_image(
         
         # Ensure the expected structure is a dictionary containing an 'annotations' key
         if 'annotations' not in annotation_data or not isinstance(annotation_data['annotations'], list):
-            raise ValueError("Invalid structure for annotations")
+            raise InvalidAnnotationError("Invalid structure for annotations")
         
         # Validate each annotation in the list
         for annotation in annotation_data['annotations']:
             Annotation(**annotation)
             
     except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid JSON format for annotations")
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise InvalidAnnotationError("Invalid JSON format for annotations")
     
     image_data = {
-        "filename": "image.png",  # You can set this as per your requirements
+        "filename": "image.png",  
         "content": src,
         "annotations": annotation_data['annotations']
     }
@@ -71,14 +91,56 @@ async def get_image(image_id: str):
             "annotations": image.get("annotations", []),
             "image_url": f"/images/content/{image_id}"
         }
-    raise HTTPException(status_code=404, detail="Image not found")
+    raise ImageNotFoundError()
 
 @app.get("/images/content/{image_id}")
 async def get_image_content(image_id: str):
     image = await collection.find_one({"_id": ObjectId(image_id)})
     if image:
         return StreamingResponse(io.BytesIO(image['content']), media_type="image/jpeg")
-    raise HTTPException(status_code=404, detail="Image not found")
+    raise ImageNotFoundError()
+
+@app.put("/images/{image_id}/annotations/{class_id}")
+async def update_annotation(
+    image_id: str,
+    class_id: float,  # Assuming class_id is a unique float identifier
+    annotation: Annotation
+):
+    try:
+        # Fetch the image from the database
+        image = await collection.find_one({"_id": ObjectId(image_id)})
+        if not image:
+            raise ImageNotFoundError()
+
+        # Find the specific annotation by class_id
+        annotations = image.get("annotations", [])
+        updated = False
+
+        for i, ann in enumerate(annotations):
+            if ann.get("class_id") == class_id:
+                # Update the annotation details
+                annotations[i]["class_id"] = class_id 
+                annotations[i] = annotation.dict()
+                 # Preserve the class_id
+                updated = True
+                break
+
+        if not updated:
+            raise HTTPException(status_code=404, detail="Annotation not found")
+
+        # Update the annotations in the database
+        result = await collection.update_one(
+            {"_id": ObjectId(image_id)},
+            {"$set": {"annotations": annotations}}
+        )
+
+        if result.modified_count == 1:
+            return {"message": "Annotation updated successfully"}
+        else:
+            return {"message": "No changes made to the annotation"}
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
