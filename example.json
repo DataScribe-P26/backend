@@ -13,3 +13,15 @@
         ]
     }
 ]
+
+
+{
+    "name": "Sample Project",
+    "description": "This is a sample project."
+}
+
+{
+    "annotations": [
+        {"class_name": "class1", "x": 0.1, "y": 0.1, "height": 0.2, "width": 0.2}
+    ]
+}

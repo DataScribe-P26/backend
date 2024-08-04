@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Form, HTTPException, Request
+import logging
+from fastapi import FastAPI, Form, HTTPException, Request, UploadFile, File
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -6,13 +7,18 @@ from pydantic import BaseModel
 from bson import ObjectId
 import io
 import json
-from typing import List
+import base64
+from typing import List, Optional
 
 app = FastAPI()
 
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  
+    allow_origins=["http://localhost:5173"],  # Adjust this as needed
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -20,7 +26,8 @@ app.add_middleware(
 
 client = AsyncIOMotorClient("mongodb+srv://Mohit:Tz4O610okBOvSpIu@cluster0.a2yzwap.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
 db = client['annotated_images']
-collection = db['images']
+projects_collection = db['projects']
+images_collection = db['images']
 
 class Annotation(BaseModel):
     class_name: str
@@ -33,13 +40,21 @@ class ImageData(BaseModel):
     filename: str
     annotations: List[Annotation]
 
+class Project(BaseModel):
+    name: str
+    description: Optional[str] = None
+
 class InvalidAnnotationError(HTTPException):
-    def _init_(self, detail: str):
-        super()._init_(status_code=400, detail=detail)
+    def __init__(self, detail: str):
+        super().__init__(status_code=400, detail=detail)
 
 class ImageNotFoundError(HTTPException):
-    def _init_(self):
-        super()._init_(status_code=404, detail="Image not found")
+    def __init__(self):
+        super().__init__(status_code=404, detail="Image not found")
+
+class ProjectNotFoundError(HTTPException):
+    def __init__(self):
+        super().__init__(status_code=404, detail="Project not found")
 
 @app.exception_handler(InvalidAnnotationError)
 async def invalid_annotation_exception_handler(request: Request, exc: InvalidAnnotationError):
@@ -55,36 +70,66 @@ async def image_not_found_exception_handler(request: Request, exc: ImageNotFound
         content={"detail": exc.detail},
     )
 
-@app.post("/upload/")
+@app.exception_handler(ProjectNotFoundError)
+async def project_not_found_exception_handler(request: Request, exc: ProjectNotFoundError):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+    )
+
+@app.post("/projects/")
+async def create_project(project: Project):
+    result = await projects_collection.insert_one(project.dict())
+    return {"project_id": str(result.inserted_id)}
+
+@app.post("/projects/{project_id}/upload/")
 async def upload_image(
+    project_id: str,
     annotations: str = Form(...),
-    src: str = Form(...)
+    file: UploadFile = File(...)
 ):
     """
+    Upload an image along with its annotations to a specific project.
     """
     try:
+        project = await projects_collection.find_one({"_id": ObjectId(project_id)})
+        if not project:
+            raise ProjectNotFoundError()
+
         annotation_data = json.loads(annotations)
         
         if 'annotations' not in annotation_data or not isinstance(annotation_data['annotations'], list):
             raise InvalidAnnotationError("Invalid structure for annotations")
         
         for annotation in annotation_data['annotations']:
-            Annotation(**annotation)
+            Annotation(**annotation)  # Validate each annotation
             
     except json.JSONDecodeError:
         raise InvalidAnnotationError("Invalid JSON format for annotations")
     
+    image_content = await file.read()
     image_data = {
-        "filename": "image.png",
-        "content": src,
-        "annotations": annotation_data['annotations']
+        "project_id": ObjectId(project_id),
+        "filename": file.filename,
+        "content": base64.b64encode(image_content).decode('utf-8'),
+        "annotations": annotation_data['annotations'],
+        "mime_type": file.content_type  # Store the MIME type
     }
-    result = await collection.insert_one(image_data)
+    result = await images_collection.insert_one(image_data)
     return {"image_id": str(result.inserted_id)}
+
+@app.get("/projects/{project_id}/images/")
+async def get_project_images(project_id: str):
+    project = await projects_collection.find_one({"_id": ObjectId(project_id)})
+    if not project:
+        raise ProjectNotFoundError()
+    
+    images = await images_collection.find({"project_id": ObjectId(project_id)}).to_list(length=None)
+    return [{"image_id": str(image["_id"]), "filename": image["filename"]} for image in images]
 
 @app.get("/images/{image_id}")
 async def get_image(image_id: str):
-    image = await collection.find_one({"_id": ObjectId(image_id)})
+    image = await images_collection.find_one({"_id": ObjectId(image_id)})
     if image:
         return {
             "filename": image["filename"],
@@ -95,18 +140,18 @@ async def get_image(image_id: str):
 
 @app.get("/images/content/{image_id}")
 async def get_image_content(image_id: str):
-    image = await collection.find_one({"_id": ObjectId(image_id)})
-    if image:
-        return StreamingResponse(io.BytesIO(image['content']), media_type="image/jpeg")
-    raise ImageNotFoundError()
+    try:
+        image = await images_collection.find_one({"_id": ObjectId(image_id)})
+        if image:
+            logger.debug(f"Image content type: {type(image['content'])}")
+            image_content = base64.b64decode(image['content'])
+            return StreamingResponse(io.BytesIO(image_content), media_type=image["mime_type"])
+        else:
+            raise ImageNotFoundError()
+    except Exception as e:
+        logger.error(f"Error retrieving image content for {image_id}: {e}")
+        raise ImageNotFoundError()
 
-@app.delete("/images/{image_id}")
-async def delete_image(image_id: str):
-    result = await collection.delete_one({"_id": ObjectId(image_id)})
-    if result.deleted_count == 1:
-        return {"detail": "Image deleted successfully"}
-    raise ImageNotFoundError()
-
-if __name__ == "_main_":
+if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0",port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
