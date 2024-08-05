@@ -35,11 +35,13 @@ class Point(BaseModel):
 
 class PolygonAnnotation(BaseModel):
     class_name: str
-    points: List[Point]  # Changed from polygon to points
+    points: List[Point]
+    Color: str
     type: str = 'polygon'
+    edit: bool
 
-    @validator('points')  # Changed from polygon to points
-    def validate_points(cls, v):  # Changed from validate_polygon to validate_points
+    @validator('points')
+    def validate_points(cls, v):
         if len(v) < 3:
             raise ValueError('Polygon must have at least 3 points')
         return v
@@ -51,6 +53,8 @@ class RectangleAnnotation(BaseModel):
     height: float
     width: float
     type: str = 'rectangle'
+    Color: str
+    edit: bool
 
 class UploadData(BaseModel):
     rectangle_annotations: Optional[List[RectangleAnnotation]] = None
@@ -135,14 +139,21 @@ async def upload_image(project_name: str, data: UploadData):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@app.get("/projects/{project_id}/images/")
-async def get_project_images(project_id: str):
-    project = await projects_collection.find_one({"_id": ObjectId(project_id)})
+@app.get("/projects/{project_name}/images/")
+async def get_project_images(project_name: str):
+    # Find the project by name
+    project = await projects_collection.find_one({"name": project_name})
     if not project:
         raise ProjectNotFoundError()
-    
+
+    # Get the project ID
+    project_id = project["_id"]
+
+    # Retrieve images associated with the project ID
     images = await images_collection.find({"project_id": ObjectId(project_id)}).to_list(length=None)
-    return [{"image_id": str(image["_id"]), "filename": image["filename"]} for image in images]
+    return [{"image_id": str(image["_id"]), "filename": image["filename"],
+            "rectangle_annotations": image.get("rectangle_annotations", []),
+            "polygon_annotations": image.get("polygon_annotations", [])} for image in images]
 
 @app.get("/projects/")
 async def get_all_projects():
