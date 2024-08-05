@@ -3,7 +3,7 @@ from fastapi import FastAPI, Form, HTTPException, Request, UploadFile, File
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from bson import ObjectId
 import io
 import json
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Adjust this as needed
+    allow_origins=["http://localhost:5173"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -29,16 +29,33 @@ db = client['annotated_images']
 projects_collection = db['projects']
 images_collection = db['images']
 
-class Annotation(BaseModel):
+class Point(BaseModel):
+    x: float
+    y: float
+
+class PolygonAnnotation(BaseModel):
+    class_name: str
+    polygon: List[Point]
+    box_type: str = 'polygon'
+
+    @validator('polygon')
+    def validate_polygon(cls, v):
+        if len(v) < 3:
+            raise ValueError('Polygon must have at least 3 points')
+        return v
+
+class RectangleAnnotation(BaseModel):
     class_name: str
     x: float
     y: float
     height: float
     width: float
+    box_type: str = 'rectangle'
 
 class ImageData(BaseModel):
     filename: str
-    annotations: List[Annotation]
+    rectangle_annotations: Optional[List[RectangleAnnotation]] = None
+    polygon_annotations: Optional[List[PolygonAnnotation]] = None
 
 class Project(BaseModel):
     name: str
@@ -85,7 +102,8 @@ async def create_project(project: Project):
 @app.post("/projects/{project_id}/upload/")
 async def upload_image(
     project_id: str,
-    annotations: str = Form(...),
+    rectangle_annotations: Optional[str] = Form(None),
+    polygon_annotations: Optional[str] = Form(None),
     file: UploadFile = File(...)
 ):
     """
@@ -96,23 +114,27 @@ async def upload_image(
         if not project:
             raise ProjectNotFoundError()
 
-        annotation_data = json.loads(annotations)
-        
-        if 'annotations' not in annotation_data or not isinstance(annotation_data['annotations'], list):
-            raise InvalidAnnotationError("Invalid structure for annotations")
-        
-        for annotation in annotation_data['annotations']:
-            Annotation(**annotation)  # Validate each annotation
-            
+        rectangle_annotations_data = json.loads(rectangle_annotations) if rectangle_annotations else []
+        polygon_annotations_data = json.loads(polygon_annotations) if polygon_annotations else []
+
+        # Validate rectangle annotations
+        for annotation in rectangle_annotations_data:
+            RectangleAnnotation(**annotation)
+
+        # Validate polygon annotations
+        for annotation in polygon_annotations_data:
+            PolygonAnnotation(**annotation)
+
     except json.JSONDecodeError:
         raise InvalidAnnotationError("Invalid JSON format for annotations")
-    
+
     image_content = await file.read()
     image_data = {
         "project_id": ObjectId(project_id),
         "filename": file.filename,
         "content": base64.b64encode(image_content).decode('utf-8'),
-        "annotations": annotation_data['annotations'],
+        "rectangle_annotations": rectangle_annotations_data,
+        "polygon_annotations": polygon_annotations_data,
         "mime_type": file.content_type  # Store the MIME type
     }
     result = await images_collection.insert_one(image_data)
@@ -133,7 +155,8 @@ async def get_image(image_id: str):
     if image:
         return {
             "filename": image["filename"],
-            "annotations": image.get("annotations", []),
+            "rectangle_annotations": image.get("rectangle_annotations", []),
+            "polygon_annotations": image.get("polygon_annotations", []),
             "image_url": f"/images/content/{image_id}"
         }
     raise ImageNotFoundError()
