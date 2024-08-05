@@ -35,11 +35,11 @@ class Point(BaseModel):
 
 class PolygonAnnotation(BaseModel):
     class_name: str
-    polygon: List[Point]
-    box_type: str = 'polygon'
+    points: List[Point]  # Changed from polygon to points
+    type: str = 'polygon'
 
-    @validator('polygon')
-    def validate_polygon(cls, v):
+    @validator('points')  # Changed from polygon to points
+    def validate_points(cls, v):  # Changed from validate_polygon to validate_points
         if len(v) < 3:
             raise ValueError('Polygon must have at least 3 points')
         return v
@@ -50,12 +50,14 @@ class RectangleAnnotation(BaseModel):
     y: float
     height: float
     width: float
-    box_type: str = 'rectangle'
+    type: str = 'rectangle'
 
-class ImageData(BaseModel):
-    filename: str
+class UploadData(BaseModel):
     rectangle_annotations: Optional[List[RectangleAnnotation]] = None
     polygon_annotations: Optional[List[PolygonAnnotation]] = None
+    file_content: str
+    file_name: str
+    mime_type: Optional[str] = None
 
 class Project(BaseModel):
     name: str
@@ -99,46 +101,39 @@ async def create_project(project: Project):
     result = await projects_collection.insert_one(project.dict())
     return {"project_id": str(result.inserted_id)}
 
-@app.post("/projects/{project_id}/upload/")
-async def upload_image(
-    project_id: str,
-    rectangle_annotations: Optional[str] = Form(None),
-    polygon_annotations: Optional[str] = Form(None),
-    file: UploadFile = File(...)
-):
-    """
-    Upload an image along with its annotations to a specific project.
-    """
+@app.post("/projects/{project_name}/upload/")
+async def upload_image(project_name: str, data: UploadData):
     try:
-        project = await projects_collection.find_one({"_id": ObjectId(project_id)})
+        # Find the project by name
+        project = await projects_collection.find_one({"name": project_name})
         if not project:
             raise ProjectNotFoundError()
 
-        rectangle_annotations_data = json.loads(rectangle_annotations) if rectangle_annotations else []
-        polygon_annotations_data = json.loads(polygon_annotations) if polygon_annotations else []
+        # Get the project ID
+        project_id = project["_id"]
 
-        # Validate rectangle annotations
-        for annotation in rectangle_annotations_data:
-            RectangleAnnotation(**annotation)
+        # Validate annotations
+        validated_rectangle_annotations = [RectangleAnnotation(**annotation.dict()) for annotation in data.rectangle_annotations] if data.rectangle_annotations else []
+        validated_polygon_annotations = [PolygonAnnotation(**annotation.dict()) for annotation in data.polygon_annotations] if data.polygon_annotations else []
 
-        # Validate polygon annotations
-        for annotation in polygon_annotations_data:
-            PolygonAnnotation(**annotation)
+        # Decode base64 file content
+        image_content = base64.b64decode(data.file_content)
+
+        image_data = {
+            "project_id": ObjectId(project_id),
+            "filename": data.file_name,
+            "content": base64.b64encode(image_content).decode('utf-8'),
+            "rectangle_annotations": [annotation.dict() for annotation in validated_rectangle_annotations],
+            "polygon_annotations": [annotation.dict() for annotation in validated_polygon_annotations],
+            "mime_type": data.mime_type or "application/octet-stream"  # Default MIME type if not provided
+        }
+        result = await images_collection.insert_one(image_data)
+        return {"image_id": str(result.inserted_id)}
 
     except json.JSONDecodeError:
-        raise InvalidAnnotationError("Invalid JSON format for annotations")
-
-    image_content = await file.read()
-    image_data = {
-        "project_id": ObjectId(project_id),
-        "filename": file.filename,
-        "content": base64.b64encode(image_content).decode('utf-8'),
-        "rectangle_annotations": rectangle_annotations_data,
-        "polygon_annotations": polygon_annotations_data,
-        "mime_type": file.content_type  # Store the MIME type
-    }
-    result = await images_collection.insert_one(image_data)
-    return {"image_id": str(result.inserted_id)}
+        raise HTTPException(status_code=400, detail="Invalid JSON format for annotations")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/projects/{project_id}/images/")
 async def get_project_images(project_id: str):
@@ -148,6 +143,15 @@ async def get_project_images(project_id: str):
     
     images = await images_collection.find({"project_id": ObjectId(project_id)}).to_list(length=None)
     return [{"image_id": str(image["_id"]), "filename": image["filename"]} for image in images]
+
+@app.get("/projects/")
+async def get_all_projects():
+    try:
+        projects = await projects_collection.find().to_list(length=None)
+        return [{"project_id": str(project["_id"]), "name": project["name"], "description": project.get("description", "")} for project in projects]
+    except Exception as e:
+        logger.error(f"Error retrieving projects: {e}")
+        raise HTTPException(status_code=500, detail="Error retrieving projects")
 
 @app.get("/images/{image_id}")
 async def get_image(image_id: str):
