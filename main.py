@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  
+    allow_origins=["http://localhost:5175"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -105,39 +105,60 @@ async def create_project(project: Project):
     result = await projects_collection.insert_one(project.dict())
     return {"project_id": str(result.inserted_id)}
 
+import hashlib
+
 @app.post("/projects/{project_name}/upload/")
 async def upload_image(project_name: str, data: UploadData):
     try:
-        # Find the project by name
         project = await projects_collection.find_one({"name": project_name})
         if not project:
             raise ProjectNotFoundError()
 
-        # Get the project ID
         project_id = project["_id"]
 
-        # Validate annotations
         validated_rectangle_annotations = [RectangleAnnotation(**annotation.dict()) for annotation in data.rectangle_annotations] if data.rectangle_annotations else []
         validated_polygon_annotations = [PolygonAnnotation(**annotation.dict()) for annotation in data.polygon_annotations] if data.polygon_annotations else []
 
-        # Decode base64 file content
         image_content = base64.b64decode(data.file_content)
+        encoded_image_content = base64.b64encode(image_content).decode('utf-8')
 
-        image_data = {
-            "project_id": ObjectId(project_id),
-            "filename": data.file_name,
-            "content": base64.b64encode(image_content).decode('utf-8'),
-            "rectangle_annotations": [annotation.dict() for annotation in validated_rectangle_annotations],
-            "polygon_annotations": [annotation.dict() for annotation in validated_polygon_annotations],
-            "mime_type": data.mime_type or "application/octet-stream"  # Default MIME type if not provided
-        }
-        result = await images_collection.insert_one(image_data)
-        return {"image_id": str(result.inserted_id)}
+        existing_image = await images_collection.find_one({
+            "content": encoded_image_content,
+            "project_id": ObjectId(project_id)
+        })
+
+        if existing_image:
+            update_result = await images_collection.update_one(
+                {"_id": existing_image["_id"]},
+                {
+                    "$set": {
+                        "rectangle_annotations": [annotation.dict() for annotation in validated_rectangle_annotations],
+                        "polygon_annotations": [annotation.dict() for annotation in validated_polygon_annotations],
+                        "mime_type": data.mime_type or "application/octet-stream"  # Default MIME 
+                    }
+                }
+            )
+            if update_result.matched_count == 0:
+                raise HTTPException(status_code=404, detail="Image not found for update")
+            return {"image_id": str(existing_image["_id"])}
+        else:
+            image_data = {
+                "project_id": ObjectId(project_id),
+                "filename": data.file_name,
+                "content": encoded_image_content,
+                "rectangle_annotations": [annotation.dict() for annotation in validated_rectangle_annotations],
+                "polygon_annotations": [annotation.dict() for annotation in validated_polygon_annotations],
+                "mime_type": data.mime_type or "application/octet-stream"  # Default MIME type if not provided
+            }
+            result = await images_collection.insert_one(image_data)
+            return {"image_id": str(result.inserted_id)}
 
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON format for annotations")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
 
 @app.get("/projects/{project_name}/images/")
 async def get_project_images(project_name: str):
@@ -151,9 +172,22 @@ async def get_project_images(project_name: str):
 
     # Retrieve images associated with the project ID
     images = await images_collection.find({"project_id": ObjectId(project_id)}).to_list(length=None)
-    return [{"image_id": str(image["_id"]), "filename": image["filename"],
+
+    # Prepare the response with image content
+    response = []
+    for image in images:
+        file_content = base64.b64decode(image["content"])
+        response.append({
+            "image_id": str(image["_id"]),
+            "filename": image["filename"],
             "rectangle_annotations": image.get("rectangle_annotations", []),
-            "polygon_annotations": image.get("polygon_annotations", [])} for image in images]
+            "polygon_annotations": image.get("polygon_annotations", []),
+            "src": base64.b64encode(file_content).decode('utf-8'),  # Encode content as base64
+            "mime_type": image.get("mime_type", "application/octet-stream")  # Default MIME type if not provided
+        })
+
+    return response
+
 
 @app.get("/projects/")
 async def get_all_projects():
