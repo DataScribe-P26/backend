@@ -151,9 +151,21 @@ async def get_project_images(project_name: str):
 
     # Retrieve images associated with the project ID
     images = await images_collection.find({"project_id": ObjectId(project_id)}).to_list(length=None)
-    return [{"image_id": str(image["_id"]), "filename": image["filename"],
+
+    # Prepare the response with image content
+    response = []
+    for image in images:
+        file_content = base64.b64decode(image["content"])
+        response.append({
+            "image_id": str(image["_id"]),
+            "filename": image["filename"],
             "rectangle_annotations": image.get("rectangle_annotations", []),
-            "polygon_annotations": image.get("polygon_annotations", [])} for image in images]
+            "polygon_annotations": image.get("polygon_annotations", []),
+            "src": base64.b64encode(file_content).decode('utf-8'),  # Encode content as base64
+            "mime_type": image.get("mime_type", "application/octet-stream")  # Default MIME type if not provided
+        })
+
+    return response
 
 @app.get("/projects/")
 async def get_all_projects():
