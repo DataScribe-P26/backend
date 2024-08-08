@@ -2,16 +2,19 @@
 name = "backend"
 version = "0.1.0"
 description = ""
-authors = [" Mohit Kirtane <mohit.kirtane@gmail.com>"]
+authors = ["Mohit <mohit.kirtane@gmail.com>"]
+readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.11"
-fastapi = "^0.111.1"
-uvicorn = "^0.30.3"
+python = ">=3.11,<3.13"
+fastapi = "^0.112.0"
+uvicorn = {extras = ["standard"], version = "^0.30.5"}
 motor = "^3.5.1"
-pydantic = "^2.8.2"
 
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+start = "PYTHONPATH=./ uvicorn main:app --reload"
