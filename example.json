@@ -13,3 +13,44 @@
         ]
     }
 ]
+
+
+{
+    "name": "Sample Project",
+    "description": "This is a sample project."
+}
+
+{
+    "annotations": [
+        {"class_name": "class1", "x": 0.1, "y": 0.1, "height": 0.2, "width": 0.2}
+    ]
+}
+
+
+// Project_id + rect_id + poly_id 
+{
+    "name": "My Project",
+    "description": "This is a test project"
+}
+
+[
+    {
+        "class_name": "cat",
+        "x": 10.5,
+        "y": 20.0,
+        "height": 15.0,
+        "width": 30.0
+    }
+]
+[
+    {
+        "class_name": "dog",
+        "polygon": [
+            {"x": 10.0, "y": 20.0},
+            {"x": 15.0, "y": 25.0},
+            {"x": 20.0, "y": 20.0}
+        ]
+    }
+]
+
+
