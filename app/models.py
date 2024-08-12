@@ -8,6 +8,7 @@ class Point(BaseModel):
 
 class PolygonAnnotation(BaseModel):
     class_name: str
+    class_id:float
     points: List[Point]
     Color: str
     type: str = 'polygon'
@@ -21,6 +22,7 @@ class PolygonAnnotation(BaseModel):
     
 class SegmentationAnnotation(BaseModel):
     class_name: str
+    class_id:float
     points: List[Point]
     Color: str
     type: str = 'segmentation'
@@ -34,6 +36,7 @@ class SegmentationAnnotation(BaseModel):
 
 class RectangleAnnotation(BaseModel):
     class_name: str
+    class_id:float
     x: float
     y: float
     height: float
@@ -42,6 +45,12 @@ class RectangleAnnotation(BaseModel):
     Color: str
     edit: bool
 
+class Image(BaseModel):
+    width: float
+    height: float
+    width_multiplier: float
+    height_multiplier: float
+
 class UploadData(BaseModel):
     rectangle_annotations: Optional[List[RectangleAnnotation]] = None
     polygon_annotations: Optional[List[PolygonAnnotation]] = None
@@ -49,6 +58,8 @@ class UploadData(BaseModel):
     file_content: str
     file_name: str
     mime_type: Optional[str] = None
+    image: Image
+    
 
 class Project(BaseModel):
     name: str
