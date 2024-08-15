@@ -44,6 +44,7 @@ class RectangleAnnotation(BaseModel):
     type: str = 'rectangle'
     Color: str
     edit: bool
+    rotation: float
 
 class Image(BaseModel):
     width: float
