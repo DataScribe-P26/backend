@@ -1,6 +1,8 @@
 # app/models.py
 from pydantic import BaseModel, validator
 from typing import List, Optional
+from datetime import datetime
+
 
 class Point(BaseModel):
     x: float
@@ -65,3 +67,4 @@ class UploadData(BaseModel):
 class Project(BaseModel):
     name: str
     description: Optional[str] = None
+    created_on: str = datetime.now()
