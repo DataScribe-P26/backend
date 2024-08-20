@@ -42,8 +42,6 @@ async def upload_image(project_name: str, data: UploadData):
                         "polygon_annotations": [annotation.dict() for annotation in validated_polygon_annotations],
                         "segmentation_annotations": [annotation.dict() for annotation in validated_segmentation_annotations],
                         "mime_type": data.mime_type or "application/octet-stream",
-                        "width": data.image.width,
-                        "height": data.image.height,
                         "width_multiplier": data.image.width_multiplier,
                         "height_multiplier": data.image.height_multiplier
                     }
