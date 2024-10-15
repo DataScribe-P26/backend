@@ -10,6 +10,8 @@ fastapi = "^0.111.1"
 uvicorn = "^0.30.3"
 motor = "^3.5.1"
 pydantic = "^2.8.2"
+spacy = "^3.8.2"
+textblob = "^0.18.0.post0"
 
 
 [build-system]

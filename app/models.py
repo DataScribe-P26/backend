@@ -1,5 +1,5 @@
 # app/models.py
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, validator, Field
 from typing import List, Optional
 from datetime import datetime
 
@@ -68,3 +68,46 @@ class Project(BaseModel):
     name: str
     description: Optional[str] = None
     created_on: str = datetime.now()
+
+
+class ProjectModel(BaseModel):
+    name: str
+    description: Optional[str] = None
+    annotation_type: str  # e.g., "NER", "Sentiment", "Classification"
+
+    class Config:
+        # Specify the collection name for your MongoDB, if needed.
+        # This is more relevant when using an ODM like Beanie, so you can ignore if you're not using it.
+        json_schema_extr = {
+            "collection": "projects"
+        }
+
+class NERAnnotationModel(BaseModel):
+    text: str
+    entities: List[dict] = Field(default_factory=list)
+    project: str
+
+    class Config:
+        json_schema_extr = {
+            "collection": "ner_annotations"
+        }
+
+class SentimentAnnotationModel(BaseModel):
+    text: str
+    sentiment: str
+    score: float
+
+    class Config:
+        json_schema_extr = {
+            "collection": "sentiment_annotations"
+        }
+
+class ClassificationAnnotationModel(BaseModel):
+    text: str
+    label: str
+    confidence: float
+
+    class Config:
+        json_schema_extr = {
+            "collection": "classification_annotations"
+        }

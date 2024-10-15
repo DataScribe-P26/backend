@@ -1,7 +1,7 @@
 # app/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routes import projects, images
+from app.routes import projects, images, text_annotation
 from app.exceptions import (
     invalid_annotation_exception_handler, 
     image_not_found_exception_handler, 
@@ -23,6 +23,7 @@ app.add_middleware(
 
 app.include_router(projects.router)
 app.include_router(images.router)
+app.include_router(text_annotation.router)
 
 app.add_exception_handler(InvalidAnnotationError, invalid_annotation_exception_handler)
 app.add_exception_handler(ImageNotFoundError, image_not_found_exception_handler)
