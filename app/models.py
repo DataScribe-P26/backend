@@ -9,71 +9,71 @@ class Point(BaseModel):
     y: float
 
 class PolygonAnnotation(BaseModel):
-    class_name: str
-    class_id:float
-    points: List[Point]
+    Class_name: str
+    Class_id:float
+    Points: List[Point]
     Color: str
-    type: str = 'polygon'
-    edit: bool
+    type: str = 'Polygon'
+    Edit: bool
 
-    @validator('points')
-    def validate_points(cls, v):
-        if len(v) < 3:
-            raise ValueError('Polygon must have at least 3 points')
-        return v
-    
+    # @validator('points')
+    # def validate_points(cls, v):
+    #     if len(v) < 3:
+    #         raise ValueError('Polygon must have at least 3 points')
+    #     return v
+
 class SegmentationAnnotation(BaseModel):
-    class_name: str
-    class_id:float
-    points: List[Point]
+    Class_name: str
+    Class_id:float
+    Points: List[Point]
     Color: str
     type: str = 'segmentation'
-    edit: bool
+    Edit: bool
 
-    @validator('points')
-    def validate_points(cls, v):
-        if len(v) < 3:  # Ensure there's at least one point
-            raise ValueError('Segmentation must have at least 1 point')
-        return v
+    # @validator('points')
+    # def validate_points(cls, v):
+    #     if len(v) < 3:  # Ensure there's at least one point
+    #         raise ValueError('Segmentation must have at least 1 point')
+    #     return v
 
 class RectangleAnnotation(BaseModel):
-    class_name: str
-    class_id:float
+    Class_name: str
+    Class_id:float
     x: float
     y: float
-    height: float
-    width: float
-    type: str = 'rectangle'
+    Height: float
+    Width: float
+    type: str = 'Rectangle'
     Color: str
-    edit: bool
-    rotation: float
+    Edit: bool
+    Rotation: float
 
 class Image(BaseModel):
-    width: float
-    height: float
-    width_multiplier: float
-    height_multiplier: float
+    Width: float
+    Height: float
+    Width_multiplier: float
+    Height_multiplier: float
 
 class UploadData(BaseModel):
-    rectangle_annotations: Optional[List[RectangleAnnotation]] = None
-    polygon_annotations: Optional[List[PolygonAnnotation]] = None
-    segmentation_annotations: Optional[List[SegmentationAnnotation]] = None
-    file_content: str
-    file_name: str
-    mime_type: Optional[str] = None
-    image: Image
-    
+    Rectangle_annotations: Optional[List[RectangleAnnotation]] = None
+    Polygon_annotations: Optional[List[PolygonAnnotation]] = None
+    Segmentation_annotations: Optional[List[SegmentationAnnotation]] = None
+    File_content: str
+    File_name: str
+    Mime_type: Optional[str] = None
+    Image: Image
+
 
 class Project(BaseModel):
-    name: str
-    description: Optional[str] = None
-    created_on: str = datetime.now()
+    Name: str
+    Description: Optional[str] = None
+    Created_on: str = datetime.now()
 
 
 class ProjectModel(BaseModel):
-    name: str
-    description: Optional[str] = None
-    annotation_type: str  # e.g., "NER", "Sentiment", "Classification"
+    Name: str
+    Description: Optional[str] = None
+    Annotation_type: str  # e.g., "NER", "Sentiment", "Classification"
 
     class Config:
         # Specify the collection name for your MongoDB, if needed.
@@ -83,9 +83,9 @@ class ProjectModel(BaseModel):
         }
 
 class NERAnnotationModel(BaseModel):
-    text: str
-    entities: List[dict] = Field(default_factory=list)
-    project: str
+    Text: str
+    Entities: List[dict] = Field(default_factory=list)
+    Project: str
 
     class Config:
         json_schema_extr = {
@@ -93,9 +93,9 @@ class NERAnnotationModel(BaseModel):
         }
 
 class SentimentAnnotationModel(BaseModel):
-    text: str
-    sentiment: str
-    score: float
+    Text: str
+    Sentiment: str
+    Score: float
 
     class Config:
         json_schema_extr = {
@@ -103,9 +103,9 @@ class SentimentAnnotationModel(BaseModel):
         }
 
 class ClassificationAnnotationModel(BaseModel):
-    text: str
-    label: str
-    confidence: float
+    Text: str
+    Label: str
+    Confidence: float
 
     class Config:
         json_schema_extr = {
